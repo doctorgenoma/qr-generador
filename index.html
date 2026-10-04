@@ -117,12 +117,24 @@ function render(){
   }
 }
 
-dlBtn.onclick = () => {
-  const a = document.createElement('a');
-  a.href = canvas.toDataURL('image/png');
-  a.download = 'codigo-qr.png';
-  document.body.appendChild(a); a.click(); a.remove();
-  hint.textContent = 'Descarga iniciada.';
+dlBtn.onclick = async () => {
+  try{
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file = new File([blob], 'codigo-qr.png', {type:'image/png'});
+    const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if(mobile && navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file]}); hint.textContent = 'Imagen compartida.'; return; }
+      catch(e){ if(e.name === 'AbortError') return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'codigo-qr.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    hint.textContent = 'Si no ves la descarga, mantén pulsada la imagen para guardarla.';
+  }catch(e){
+    hint.textContent = 'No se pudo descargar. Mantén pulsada la imagen para guardarla.';
+  }
 };
 copyBtn.onclick = async () => {
   try{
