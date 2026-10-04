@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Generador de códigos QR</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Inter:wght@400;500&display=swap">
+<style>
+:root{--bg:#EEF1F7;--panel:#fff;--ink:#14213D;--muted:#5B6579;--line:#D3D9E6;--accent:#2B50FF;--accent-ink:#fff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0F1524;--panel:#192138;--ink:#E8ECF7;--muted:#9AA5BF;--line:#2C3756;--accent:#6F8BFF;--accent-ink:#0F1524}}
+:root[data-theme="dark"]{--bg:#0F1524;--panel:#192138;--ink:#E8ECF7;--muted:#9AA5BF;--line:#2C3756;--accent:#6F8BFF;--accent-ink:#0F1524}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif}
+main{max-width:880px;margin:0 auto;padding:24px 16px 40px}
+h1{font:700 clamp(28px,6vw,44px)/1.1 "Bricolage Grotesque",Inter,sans-serif;margin:8px 0 6px;letter-spacing:-.02em}
+.sub{color:var(--muted);margin:0 0 24px}
+.grid{display:grid;gap:16px;grid-template-columns:1fr}
+@media(min-width:760px){.grid{grid-template-columns:1fr 1fr;align-items:start}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+label{display:block;font-weight:500;margin:0 0 6px}
+textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+textarea{min-height:110px;resize:vertical}
+textarea:focus-visible,select:focus-visible,input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.field{margin-bottom:16px}
+.row{display:flex;gap:12px}
+.row>div{flex:1}
+input[type=color]{width:100%;height:42px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:3px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.out{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.stage{width:100%;aspect-ratio:1;max-width:340px;display:grid;place-items:center;border:1px dashed var(--line);border-radius:12px;overflow:hidden}
+.stage img{max-width:100%;height:auto;image-rendering:pixelated;display:block}
+.empty{color:var(--muted);padding:20px}
+button{font:500 16px Inter,sans-serif;border:0;border-radius:10px;padding:12px 18px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+button[disabled]{opacity:.4;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.hint{color:var(--muted);font-size:14px;margin:0;min-height:21px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Generador de códigos QR</h1>
+  <p class="sub">Escribe un enlace o un texto y obtén tu código al instante.</p>
+  <div class="grid">
+    <section class="panel" aria-label="Opciones">
+      <div class="field">
+        <label for="txt">Enlace o texto</label>
+        <textarea id="txt" placeholder="https://ejemplo.com"></textarea>
+      </div>
+      <div class="field">
+        <label for="size">Tamaño: <span id="sizeV">320</span> px</label>
+        <input id="size" type="range" min="160" max="640" step="20" value="320">
+      </div>
+      <div class="row field">
+        <div><label for="fg">Color del código</label><input id="fg" type="color" value="#000000"></div>
+        <div><label for="bg">Color de fondo</label><input id="bg" type="color" value="#ffffff"></div>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label for="ec">Corrección de errores</label>
+        <select id="ec">
+          <option value="L">Baja (más simple)</option>
+          <option value="M" selected>Media</option>
+          <option value="Q">Alta</option>
+          <option value="H">Máxima (más densa)</option>
+        </select>
+      </div>
+    </section>
+    <section class="panel out" aria-live="polite">
+      <div class="stage" id="stage"><div class="empty">Tu código QR aparecerá aquí.</div></div>
+      <div class="actions">
+        <button id="download" disabled>Descargar PNG</button>
+        <button id="copy" class="ghost" disabled>Copiar imagen</button>
+        <button id="clear" class="ghost">Borrar</button>
+      </div>
+      <p class="hint" id="hint">Descárgalo como PNG o cópialo al portapapeles.</p>
+    </section>
+  </div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const txt=$('txt'), size=$('size'), fg=$('fg'), bg=$('bg'), ec=$('ec'), stage=$('stage'), copyBtn=$('copy'), dlBtn=$('download'), hint=$('hint');
+let canvas = null;
+const DEFAULT_HINT = hint.textContent;
+
+function render(){
+  $('sizeV').textContent = size.value;
+  const value = txt.value.trim();
+  canvas = null;
+  copyBtn.disabled = true; dlBtn.disabled = true;
+  if(!value){ stage.innerHTML = '<div class="empty">Tu código QR aparecerá aquí.</div>'; return; }
+  try{
+    const qr = qrcode(0, ec.value);
+    qr.addData(value, 'Byte');
+    qr.make();
+    const n = qr.getModuleCount(), quiet = 4;
+    const scale = Math.max(1, Math.floor(+size.value / (n + quiet*2)));
+    const px = scale * (n + quiet*2);
+    canvas = document.createElement('canvas');
+    canvas.width = canvas.height = px;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = bg.value; ctx.fillRect(0,0,px,px);
+    ctx.fillStyle = fg.value;
+    for(let r=0;r<n;r++) for(let c=0;c<n;c++)
+      if(qr.isDark(r,c)) ctx.fillRect((c+quiet)*scale,(r+quiet)*scale,scale,scale);
+    const img = new Image();
+    img.alt = 'Código QR generado';
+    img.src = canvas.toDataURL('image/png');
+    img.style.width = Math.min(px, 340) + 'px';
+    stage.replaceChildren(img);
+    copyBtn.disabled = false; dlBtn.disabled = false;
+    hint.textContent = DEFAULT_HINT;
+  }catch(e){
+    stage.innerHTML = '<div class="empty">El texto es demasiado largo para un código QR. Acórtalo o baja la corrección de errores.</div>';
+  }
+}
+
+dlBtn.onclick = () => {
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'codigo-qr.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  hint.textContent = 'Descarga iniciada.';
+};
+copyBtn.onclick = async () => {
+  try{
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+    hint.textContent = 'Imagen copiada.';
+  }catch(e){
+    hint.textContent = 'No se pudo copiar. Mantén pulsada la imagen para guardarla.';
+  }
+};
+$('clear').onclick = () => { txt.value=''; render(); txt.focus(); hint.textContent = DEFAULT_HINT; };
+[txt,size,fg,bg,ec].forEach(el => el.addEventListener('input', render));
+render();
+</script>
+</body>
+</html>
